@@ -503,17 +503,21 @@
     if (running && !paused) { elapsed++; $('time').textContent = fmt(elapsed); if (elapsed % 5 === 0) save(); }
   }, 1000);
 
-  // Blokada powiększania: podwójne stuknięcie i szczypanie (iOS ignoruje user-scalable=no).
-  let lastTouchEnd = 0;
-  document.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTouchEnd < 350 && !e.target.closest('button, label, input')) e.preventDefault();
-    lastTouchEnd = now;
-  }, { passive: false });
-  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
-  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t =>
+  // Blokada powiększania (podwójne stuknięcie, szczypanie).
+  // iOS ignoruje user-scalable=no, więc blokujemy domyślną obsługę dotyku w całości,
+  // a przyciski i pola wyboru uruchamiamy sami na pointerup.
+  document.addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchend', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(t =>
     document.addEventListener(t, e => e.preventDefault(), { passive: false }));
-  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  document.addEventListener('pointerup', e => {
+    if (e.pointerType === 'mouse') return;   // myszką działa zwykłe kliknięcie
+    const el = e.target.closest('button, label, input');
+    if (!el) return;
+    const target = el.tagName === 'LABEL' ? el.querySelector('input') : el;
+    if (target && !target.disabled) target.click();
+  });
 
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', () => setTimeout(layout, 200));
