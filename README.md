@@ -1,6 +1,6 @@
 # Mahjong 🀄
 
-Mahjong-pasjans dla dzieci: obrazkowe kafelki (zwierzęta, jedzenie, zabawa), 3 poziomy trudności.
+Mahjong-pasjans dla dzieci: obrazkowe kafelki (zwierzęta, jedzenie, zabawa, Liga Mistrzów), 3 poziomy trudności.
 Gra działa w przeglądarce i można ją zainstalować na tablecie jak aplikację (PWA). Po pierwszym uruchomieniu działa bez internetu.
 
 ## Zasady
@@ -20,3 +20,7 @@ Każde rozdanie jest generowane tak, żeby dało się je ułożyć do końca. Gr
 
 ## Aktualizacja
 Po zmianie plików podbij numer `CACHE` w `sw.js` (np. `mahjong-v2`), żeby tablety pobrały nową wersję.
+
+## Zestaw „Liga Mistrzów”
+36 klubów fazy ligowej Ligi Mistrzów 2026/27. To nie są oficjalne herby (chronione znaki towarowe),
+tylko własne tarcze w barwach klubów ze skrótem nazwy. Lista i barwy: tablica `CLUBS` w `index.html`.
