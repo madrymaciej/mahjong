@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mahjong</title>
+<meta name="theme-color" content="#1f6f4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mahjong">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root {
+    --felt: #1f6f4a;
+    --felt-dark: #154d33;
+    --tile: #fffaf0;
+    --tile-side: #d9c7a0;
+    --tile-side2: #b9a274;
+    --sel: #ffd84d;
+    --hint: #6fd3ff;
+    --text: #fff;
+    --btn: rgba(255,255,255,.14);
+    --btn-active: rgba(255,255,255,.28);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+    background-color: var(--felt-dark);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  #app { display: flex; flex-direction: column; height: 100%;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
+  .stats { display: flex; gap: 14px; font-size: 17px; font-weight: 600; margin-right: auto; flex-wrap: wrap; }
+  .stats span { white-space: nowrap; }
+  button {
+    font: inherit; font-size: 17px; font-weight: 600; color: var(--text);
+    background: var(--btn); border: 0; border-radius: 14px;
+    padding: 10px 14px; min-height: 48px; cursor: pointer;
+  }
+  button:active { background: var(--btn-active); transform: scale(.97); }
+  button:disabled { opacity: .4; }
+  #board-wrap { flex: 1; position: relative; overflow: hidden; }
+  #board { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; }
+  .tile {
+    position: absolute; border-radius: 10px;
+    background: linear-gradient(145deg, #ffffff 0%, var(--tile) 60%, #f3ead6 100%);
+    box-shadow: 1px 1px 0 var(--tile-side), 2px 2px 0 var(--tile-side), 3px 3px 0 var(--tile-side),
+                4px 4px 0 var(--tile-side2), 5px 5px 0 var(--tile-side2), 6px 6px 0 var(--tile-side2),
+                7px 8px 10px rgba(0,0,0,.35);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .12s, opacity .25s, filter .2s;
+    border: 2px solid #e8dcc0;
+  }
+  .tile .face { font-size: 46px; line-height: 1; pointer-events: none; }
+  .tile.blocked.dim { filter: brightness(.72) saturate(.75); }
+  .tile.selected { background: var(--sel); border-color: #e0a800; transform: translate(-2px,-3px); }
+  .tile.hint { animation: pulse .5s ease-in-out 4 alternate; }
+  .tile.shake { animation: shake .3s; }
+  .tile.gone { opacity: 0; transform: scale(.6) translateY(-20px); pointer-events: none; }
+  @keyframes pulse { from { background: var(--tile); } to { background: var(--hint); transform: translate(-2px,-3px); } }
+  @keyframes shake { 0%,100% { margin-left: 0 } 25% { margin-left: -6px } 75% { margin-left: 6px } }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: none; align-items: center; justify-content: center; z-index: 100000; padding: 16px;
+  }
+  .overlay.show { display: flex; }
+  .panel {
+    background: #fff; color: #1d2b22; border-radius: 22px; padding: 22px;
+    width: min(520px, 100%); max-height: 100%; overflow: auto; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .panel h1 { margin: 4px 0 6px; font-size: 32px; }
+  .panel h2 { margin: 18px 0 8px; font-size: 18px; color: #4b5d52; }
+  .panel p { margin: 6px 0; font-size: 18px; }
+  .panel .big { font-size: 64px; margin: 0; }
+  .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .panel button { color: #1d2b22; background: #eef3ef; }
+  .panel button.on { background: var(--felt); color: #fff; }
+  .panel .primary { background: var(--felt); color: #fff; width: 100%; margin-top: 18px; font-size: 21px; min-height: 58px; }
+  .panel .row { display: flex; gap: 8px; margin-top: 10px; }
+  .panel .row button { flex: 1; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 18px; padding: 8px 2px; text-align: left; }
+  .best { font-size: 15px; color: #4b5d52; margin-top: 10px; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: rgba(0,0,0,.75); padding: 12px 20px; border-radius: 14px; font-size: 18px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 100001; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+  @media (max-width: 600px) {
+    button { padding: 8px 10px; font-size: 15px; min-height: 44px; }
+    .stats { font-size: 15px; gap: 10px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stats">
+      <span>🀄 <b id="left">0</b></span>
+      <span>✋ <b id="moves">0</b></span>
+      <span>⏱ <b id="time">0:00</b></span>
+    </div>
+    <button id="btnHint" title="Podpowiedź">💡 Podpowiedź</button>
+    <button id="btnUndo" title="Cofnij">↩️ Cofnij</button>
+    <button id="btnShuffle" title="Tasuj">🔀 Tasuj</button>
+    <button id="btnMenu" title="Menu">☰ Menu</button>
+  </header>
+  <div id="board-wrap"><div id="board"></div></div>
+</div>
+
+<div class="overlay" id="menu">
+  <div class="panel">
+    <p class="big">🀄</p>
+    <h1>Mahjong</h1>
+    <p>Dotknij dwóch takich samych <b>wolnych</b> kafelków, żeby je zdjąć.</p>
+    <p style="font-size:15px;color:#4b5d52">Kafelek jest wolny, gdy nic na nim nie leży i ma pusty bok z lewej albo z prawej.</p>
+    <h2>Poziom</h2>
+    <div class="choices" id="levels"></div>
+    <h2>Obrazki</h2>
+    <div class="choices" id="themes"></div>
+    <h2>Ustawienia</h2>
+    <label class="toggle">Przyciemniaj zablokowane kafelki <input type="checkbox" id="optDim"></label>
+    <label class="toggle">Dźwięki <input type="checkbox" id="optSound"></label>
+    <div class="best" id="bestInfo"></div>
+    <button class="primary" id="btnStart">▶️ Nowa gra</button>
+    <button class="primary" id="btnResume" style="background:#eef3ef;color:#1d2b22;margin-top:8px">Wróć do gry</button>
+  </div>
+</div>
+
+<div class="overlay" id="win">
+  <div class="panel">
+    <p class="big">🏆</p>
+    <h1>Brawo!</h1>
+    <p id="winText"></p>
+    <p id="winBest" style="font-weight:700;color:#1f6f4a"></p>
+    <button class="primary" id="btnAgain">▶️ Zagraj jeszcze raz</button>
+    <div class="row"><button id="btnWinMenu">☰ Zmień poziom</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="stuck">
+  <div class="panel">
+    <p class="big">🤔</p>
+    <h1>Brak ruchów</h1>
+    <p>Nie ma już pasujących wolnych par.</p>
+    <button class="primary" id="btnStuckShuffle">🔀 Potasuj kafelki</button>
+    <div class="row"><button id="btnStuckUndo">↩️ Cofnij</button><button id="btnStuckNew">Nowa gra</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Dane ----------
+  const THEMES = {
+    animals: { name: '🐶 Zwierzęta', tiles: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦕','🦖','🦆','🦉','🐴','🦄','🐝','🐞','🦋','🐢','🐍','🐙','🦀','🐠','🐬','🐳','🦈','🐘','🦒'] },
+    food:    { name: '🍎 Jedzenie',  tiles: ['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🥑','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🥕','🌽','🥦','🍄','🥨','🧀','🍕','🍔','🍟','🌭','🍩','🍪','🎂','🍭','🍬','🍫','🍿','🧁','🍦','🥐'] },
+    fun:     { name: '🚀 Zabawa',    tiles: ['🚗','🚕','🚌','🚓','🚑','🚒','🚜','🏎️','🚲','🛴','🚂','✈️','🚁','🚀','🛸','⛵','⚽','🏀','🏈','⚾','🎾','🏐','🎱','🏓','🥊','🎮','🎲','🧩','🎸','🥁','🎺','🎨','🪁','🎈','⭐','🌈'] },
+  };
+
+  // Współrzędne w półkafelkach: kafelek zajmuje [x,x+2) × [y,y+2) na warstwie z.
+  function rect(arr, w, h, z, ox, oy) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) arr.push({ x: ox + 2 * i, y: oy + 2 * j, z });
+    return arr;
+  }
+  const LEVELS = {
+    easy: { name: '😊 Łatwy', kinds: 12, build() {
+      const a = []; rect(a, 6, 4, 0, 0, 0); rect(a, 4, 2, 1, 2, 2); rect(a, 2, 1, 2, 4, 3); return a; } },
+    medium: { name: '🙂 Średni', kinds: 22, build() {
+      const a = []; rect(a, 8, 6, 0, 0, 0); rect(a, 6, 4, 1, 2, 2); rect(a, 4, 2, 2, 4, 4); rect(a, 2, 1, 3, 6, 5);
+      a.push({ x: -2, y: 5, z: 0 }, { x: 16, y: 5, z: 0 }); return a; } },
+    hard: { name: '😎 Trudny', kinds: 36, build() {
+      const a = []; rect(a, 12, 6, 0, 0, 0); rect(a, 10, 4, 1, 2, 2); rect(a, 6, 4, 2, 6, 2); rect(a, 2, 2, 3, 10, 4);
+      a.push({ x: -4, y: 5, z: 0 }, { x: -2, y: 5, z: 0 }, { x: 24, y: 5, z: 0 }, { x: 26, y: 5, z: 0 }); return a; } },
+  };
+
+  // ---------- Pamięć (bezpieczna) ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('mj_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('mj_' + k, JSON.stringify(v)); } catch {} },
+    del(k) { try { localStorage.removeItem('mj_' + k); } catch {} },
+  };
+
+  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true }, store.get('settings', {}));
+
+  // ---------- Stan gry ----------
+  let tiles = [];       // {x,y,z,t,alive}
+  let history = [];     // [[i,j], ...]
+  let selected = -1;
+  let moves = 0;
+  let elapsed = 0;      // sekundy
+  let running = false;
+  let game = null;      // {level, theme}
+  let els = [];
+
+  const $ = id => document.getElementById(id);
+  const boardEl = $('board'), wrapEl = $('board-wrap');
+
+  // ---------- Logika ----------
+  function isFree(i, alive) {
+    const a = tiles[i];
+    let left = false, right = false;
+    for (let j = 0; j < tiles.length; j++) {
+      if (j === i || !alive[j]) continue;
+      const b = tiles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (Math.abs(dy) >= 2) continue;
+      if (b.z > a.z) { if (Math.abs(dx) < 2) return false; }
+      else if (b.z === a.z) { if (dx === -2) left = true; else if (dx === 2) right = true; }
+    }
+    return !(left && right);
+  }
+  const aliveArr = () => tiles.map(t => t.alive);
+
+  function freeList(alive) {
+    const out = [];
+    for (let i = 0; i < tiles.length; i++) if (alive[i] && isFree(i, alive)) out.push(i);
+    return out;
+  }
+
+  function shuffleArr(a) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+
+  // Rozdaje typy kafelków tak, żeby układ na pewno dało się ułożyć:
+  // symuluje zdejmowanie losowych wolnych par i nadaje każdej parze ten sam obrazek.
+  function dealSolvable(indices, pairTypes, strict = false) {
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const alive = tiles.map((_, i) => indices.includes(i));
+      const pairs = [];
+      let ok = true;
+      for (let n = 0; n < indices.length / 2; n++) {
+        const free = shuffleArr(freeList(alive));
+        if (free.length < 2) { ok = false; break; }
+        const a = free[0], b = free[1];
+        alive[a] = alive[b] = false;
+        pairs.push([a, b]);
+      }
+      if (!ok) continue;
+      const types = shuffleArr(pairTypes.slice());
+      pairs.forEach(([a, b], k) => { tiles[a].t = types[k]; tiles[b].t = types[k]; });
+      return true;
+    }
+    if (strict) return false;
+    // awaryjnie (praktycznie się nie zdarza): zwykłe losowanie
+    const flat = shuffleArr(pairTypes.flatMap(t => [t, t]));
+    indices.forEach((i, k) => tiles[i].t = flat[k]);
+    return false;
+  }
+
+  function newGame() {
+    const L = LEVELS[settings.level];
+    game = { level: settings.level, theme: settings.theme };
+    tiles = L.build().map(p => ({ ...p, t: 0, alive: true }));
+    const nPairs = tiles.length / 2;
+    const kinds = Math.min(L.kinds, THEMES[settings.theme].tiles.length);
+    const kindOrder = shuffleArr([...Array(THEMES[settings.theme].tiles.length).keys()]).slice(0, kinds);
+    const pairTypes = [];
+    for (let p = 0; p < nPairs; p++) pairTypes.push(kindOrder[p % kinds]);
+    dealSolvable(tiles.map((_, i) => i), pairTypes);
+    history = []; selected = -1; moves = 0; elapsed = 0; running = true;
+    render(); save(); checkStuck();
+  }
+
+  function reshuffle() {
+    // Jeśli układu nie da się już dokończyć (np. dwa kafelki leżą jeden na drugim),
+    // cofamy tyle ruchów, ile trzeba, i dopiero wtedy tasujemy.
+    let undone = 0;
+    for (;;) {
+      const idx = tiles.map((t, i) => t.alive ? i : -1).filter(i => i >= 0);
+      if (idx.length < 2) return;
+      const types = idx.map(i => tiles[i].t).sort((a, b) => a - b);
+      const pairTypes = []; for (let k = 0; k < types.length; k += 2) pairTypes.push(types[k]);
+      if (dealSolvable(idx, pairTypes, true) || history.length === 0) {
+        if (history.length === 0 && undone === 0) dealSolvable(idx, pairTypes);
+        break;
+      }
+      history.pop().forEach(i => tiles[i].alive = true);
+      undone++;
+    }
+    selected = -1; running = true;
+    render(); save();
+    toast(undone ? `🔀 Cofnięto ${undone} ${undone === 1 ? 'ruch' : undone < 5 ? 'ruchy' : 'ruchów'} i potasowano` : '🔀 Potasowano');
+    checkStuck();
+  }
+
+  function findMoves(limit = Infinity) {
+    const alive = aliveArr();
+    const free = freeList(alive);
+    const byType = {};
+    const pairs = [];
+    for (const i of free) (byType[tiles[i].t] ||= []).push(i);
+    for (const k in byType) {
+      const g = byType[k];
+      for (let a = 0; a < g.length; a++) for (let b = a + 1; b < g.length; b++) {
+        pairs.push([g[a], g[b]]); if (pairs.length >= limit) return pairs;
+      }
+    }
+    return pairs;
+  }
+
+  function tap(i) {
+    if (!running || !tiles[i].alive) return;
+    if (!isFree(i, aliveArr())) { shake(i); beep(180, .08); return; }
+    if (selected === i) { selected = -1; updateClasses(); return; }
+    if (selected >= 0 && tiles[selected].t === tiles[i].t) {
+      const a = selected; selected = -1;
+      tiles[a].alive = tiles[i].alive = false;
+      history.push([a, i]); moves++;
+      beep(660, .07); setTimeout(() => beep(880, .09), 70);
+      updateClasses(); updateStats(); save();
+      if (tiles.every(t => !t.alive)) return win();
+      checkStuck();
+      return;
+    }
+    selected = i; beep(440, .04); updateClasses();
+  }
+
+  function undo() {
+    const last = history.pop();
+    if (!last) { toast('Nie ma czego cofać'); return; }
+    last.forEach(i => tiles[i].alive = true);
+    moves = Math.max(0, moves - 1);
+    selected = -1; running = true;
+    updateClasses(); updateStats(); save();
+  }
+
+  function hint() {
+    const m = findMoves(1)[0];
+    if (!m) { showStuck(); return; }
+    m.forEach(i => { const e = els[i]; e.classList.remove('hint'); void e.offsetWidth; e.classList.add('hint'); });
+    setTimeout(() => m.forEach(i => els[i].classList.remove('hint')), 2100);
+  }
+
+  function checkStuck() {
+    if (tiles.some(t => t.alive) && findMoves(1).length === 0) setTimeout(showStuck, 400);
+  }
+  function showStuck() { $('stuck').classList.add('show'); }
+
+  function win() {
+    running = false;
+    store.del('game');
+    const key = 'best_' + game.level;
+    const best = store.get(key, null);
+    const isBest = best == null || elapsed < best;
+    if (isBest) store.set(key, elapsed);
+    $('winText').textContent = `Poziom ${LEVELS[game.level].name.replace(/^\S+\s/, '')} ułożony w ${fmt(elapsed)}.`;
+    $('winBest').textContent = isBest ? '⭐ Nowy rekord! ⭐' : `Rekord: ${fmt(best)}`;
+    [523, 659, 784, 1047].forEach((f, k) => setTimeout(() => beep(f, .15), k * 140));
+    setTimeout(() => $('win').classList.add('show'), 450);
+  }
+
+  // ---------- Widok ----------
+  const UX = 32, UY = 40, DEPTH = 6;  // px na półkafelek; przesunięcie warstwy
+  let boardW = 0, boardH = 0;
+
+  function render() {
+    boardEl.innerHTML = '';
+    const pics = THEMES[game.theme].tiles;
+    const minX = Math.min(...tiles.map(t => t.x)), minY = Math.min(...tiles.map(t => t.y));
+    const maxX = Math.max(...tiles.map(t => t.x)), maxY = Math.max(...tiles.map(t => t.y));
+    const maxZ = Math.max(...tiles.map(t => t.z));
+    boardW = (maxX - minX + 2) * UX + maxZ * DEPTH + DEPTH;
+    boardH = (maxY - minY + 2) * UY + maxZ * DEPTH + DEPTH;
+    boardEl.style.width = boardW + 'px'; boardEl.style.height = boardH + 'px';
+    els = tiles.map((t, i) => {
+      const e = document.createElement('div');
+      e.className = 'tile';
+      e.style.left = ((t.x - minX) * UX + (maxZ - t.z) * DEPTH) + 'px';
+      e.style.top = ((t.y - minY) * UY + (maxZ - t.z) * DEPTH) + 'px';
+      e.style.width = (2 * UX - DEPTH) + 'px';
+      e.style.height = (2 * UY - DEPTH) + 'px';
+      e.style.zIndex = t.z * 1000 + t.y * 30 + t.x + 10;
+      e.innerHTML = `<span class="face">${pics[t.t]}</span>`;
+      e.addEventListener('pointerdown', ev => { ev.preventDefault(); tap(i); });
+      boardEl.appendChild(e);
+      return e;
+    });
+    layout(); updateClasses(); updateStats();
+  }
+
+  function layout() {
+    if (!boardW) return;
+    const pad = 12;
+    const s = Math.min((wrapEl.clientWidth - pad * 2) / boardW, (wrapEl.clientHeight - pad * 2) / boardH, 1.6);
+    boardEl.style.transform = `scale(${s}) translate(${-boardW / 2}px, ${-boardH / 2}px)`;
+  }
+
+  function updateClasses() {
+    const alive = aliveArr();
+    tiles.forEach((t, i) => {
+      const e = els[i];
+      e.classList.toggle('gone', !t.alive);
+      e.classList.toggle('selected', i === selected);
+      const blocked = t.alive && !isFree(i, alive);
+      e.classList.toggle('blocked', blocked);
+      e.classList.toggle('dim', settings.dim);
+    });
+    $('btnUndo').disabled = history.length === 0;
+  }
+
+  function updateStats() {
+    $('left').textContent = tiles.filter(t => t.alive).length;
+    $('moves').textContent = findMoves().length;
+    $('time').textContent = fmt(elapsed);
+  }
+
+  function shake(i) { const e = els[i]; e.classList.remove('shake'); void e.offsetWidth; e.classList.add('shake'); }
+  const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1500);
+  }
+
+  // ---------- Dźwięk ----------
+  let actx;
+  function beep(freq, dur) {
+    if (!settings.sound) return;
+    try {
+      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(.12, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + dur + .05);
+      o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur + .06);
+    } catch {}
+  }
+
+  // ---------- Zapis ----------
+  function save() {
+    if (!game) return;
+    store.set('game', { game, tiles, history, moves, elapsed });
+  }
+  function load() {
+    const s = store.get('game', null);
+    if (!s || !s.tiles || !LEVELS[s.game?.level] || !THEMES[s.game?.theme]) return false;
+    ({ game, tiles, history, moves, elapsed } = s);
+    selected = -1; running = tiles.some(t => t.alive);
+    render();
+    return running;
+  }
+
+  // ---------- Menu ----------
+  function buildMenu() {
+    const lv = $('levels'); lv.innerHTML = '';
+    for (const k in LEVELS) {
+      const b = document.createElement('button'); b.textContent = LEVELS[k].name;
+      b.className = settings.level === k ? 'on' : '';
+      b.onclick = () => { settings.level = k; saveSettings(); buildMenu(); };
+      lv.appendChild(b);
+    }
+    const th = $('themes'); th.innerHTML = '';
+    for (const k in THEMES) {
+      const b = document.createElement('button'); b.textContent = THEMES[k].name;
+      b.className = settings.theme === k ? 'on' : '';
+      b.onclick = () => { settings.theme = k; saveSettings(); buildMenu(); };
+      th.appendChild(b);
+    }
+    $('optDim').checked = settings.dim;
+    $('optSound').checked = settings.sound;
+    const best = store.get('best_' + settings.level, null);
+    $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
+    $('btnResume').style.display = running ? '' : 'none';
+  }
+  function saveSettings() { store.set('settings', settings); }
+  function openMenu() { buildMenu(); $('menu').classList.add('show'); }
+  function closeOverlays() { document.querySelectorAll('.overlay').forEach(o => o.classList.remove('show')); }
+
+  $('optDim').onchange = e => { settings.dim = e.target.checked; saveSettings(); if (els.length) updateClasses(); };
+  $('optSound').onchange = e => { settings.sound = e.target.checked; saveSettings(); };
+  $('btnStart').onclick = () => { closeOverlays(); newGame(); };
+  $('btnResume').onclick = closeOverlays;
+  $('btnMenu').onclick = openMenu;
+  $('btnHint').onclick = hint;
+  $('btnUndo').onclick = undo;
+  $('btnShuffle').onclick = reshuffle;
+  $('btnAgain').onclick = () => { closeOverlays(); newGame(); };
+  $('btnWinMenu').onclick = () => { closeOverlays(); openMenu(); };
+  $('btnStuckShuffle').onclick = () => { closeOverlays(); reshuffle(); };
+  $('btnStuckUndo').onclick = () => { closeOverlays(); undo(); };
+  $('btnStuckNew').onclick = () => { closeOverlays(); openMenu(); };
+
+  // ---------- Zegar ----------
+  setInterval(() => {
+    const paused = document.hidden || document.querySelector('.overlay.show');
+    if (running && !paused) { elapsed++; $('time').textContent = fmt(elapsed); if (elapsed % 5 === 0) save(); }
+  }, 1000);
+
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', () => setTimeout(layout, 200));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+  // ---------- Start ----------
+  if (!load()) openMenu();
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
