@@ -22,10 +22,11 @@ Każde rozdanie jest generowane tak, żeby dało się je ułożyć do końca. Gr
 Po zmianie plików podbij numer `CACHE` w `sw.js` (np. `mahjong-v2`), żeby tablety pobrały nową wersję.
 
 ## Zestaw „Liga Mistrzów”
-36 klubów fazy ligowej Ligi Mistrzów 2026/27. To nie są oficjalne herby (chronione znaki towarowe),
-tylko własne tarcze w barwach klubów ze skrótem nazwy. Lista i barwy: tablica `CLUBS` w `index.html`.
+36 klubów fazy ligowej Ligi Mistrzów 2026/27. Gra pokazuje herby klubów z pliku `herby/herby-liga-mistrzow.json`;
+w menu można je wyłączyć – wtedy pokazuje własne tarcze w barwach klubów (tablica `CLUBS` w `index.html`).
 
-### Prawdziwe herby (opcjonalnie, tylko lokalnie)
-W menu przy zestawie „Liga Mistrzów” jest przycisk **Wgraj herby**. Wybierasz plik `herby-liga-mistrzow.json`
-(nie ma go w tym repozytorium) – gra zapisuje herby wyłącznie w pamięci danego tabletu.
-Format pliku: `{"type":"mahjong-herby","clubs":{"ARS":"data:image/png;base64,...", ...}}` (klucze = skróty z tablicy `CLUBS`).
+### Prawa do herbów
+Herby klubów są znakami towarowymi i utworami należącymi do ich właścicieli (klubów). Ten projekt nie jest
+powiązany z żadnym klubem, UEFA ani FootyLogos i nie rości sobie żadnych praw do herbów. Pliki herbów pochodzą
+z bazy [FootyLogos.com](https://www.footylogos.com/logo-usage-right) i są używane wyłącznie w prywatnej,
+niekomercyjnej grze dla dzieci. Właściciel praw, który chce usunięcia herbu, może zgłosić to w Issues – zostanie usunięty.

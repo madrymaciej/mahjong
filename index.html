@@ -148,10 +148,7 @@
     <h2>Obrazki</h2>
     <div class="choices" id="themes"></div>
     <div id="crestBox">
-      <div class="row">
-        <label class="filebtn native">📥 Wgraj herby<input type="file" id="crestFile"></label>
-        <button id="btnCrestsDel">🗑 Usuń herby</button>
-      </div>
+      <label class="toggle">Prawdziwe herby klubów <input type="checkbox" id="optCrests"></label>
       <p id="crestInfo"></p>
     </div>
     <h2>Ustawienia</h2>
@@ -259,7 +256,7 @@
   // na swoim tablecie, a gra trzyma je wyłącznie w pamięci tego urządzenia.
   let crests = null;
   function clubTiles() {
-    return CLUBS.map((c, i) => crests && crests[c[0]]
+    return CLUBS.map((c, i) => settings.crests && crests && crests[c[0]]
       ? `<img src="${crests[c[0]]}" alt="${c[4]}" draggable="false">` : shield(c, i));
   }
   THEMES.clubs = { name: '⚽ Liga Mistrzów', tiles: [] };
@@ -287,7 +284,7 @@
     del(k) { try { localStorage.removeItem('mj_' + k); } catch {} },
   };
 
-  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true }, store.get('settings', {}));
+  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true, crests: true }, store.get('settings', {}));
 
   // ---------- Stan gry ----------
   let tiles = [];       // {x,y,z,t,alive}
@@ -572,10 +569,9 @@
     $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
     $('btnResume').style.display = running ? '' : 'none';
     $('crestBox').classList.toggle('show', settings.theme === 'clubs');
-    const n = crests ? Object.keys(crests).length : 0;
-    $('crestInfo').textContent = n ? `✅ Na tym tablecie są wgrane herby (${n}).`
-      : 'Bez wgranych herbów gra pokazuje tarcze w barwach klubów.';
-    $('btnCrestsDel').disabled = !n;
+    $('optCrests').checked = settings.crests;
+    $('crestInfo').textContent = !settings.crests ? 'Wyłączone: gra pokazuje tarcze w barwach klubów.'
+      : crests ? '' : 'Herby jeszcze się nie wczytały (potrzebny internet przy pierwszym uruchomieniu).';
   }
   function saveSettings() { store.set('settings', settings); }
   function openMenu() { buildMenu(); $('menu').classList.add('show'); }
@@ -624,34 +620,23 @@
   window.addEventListener('orientationchange', () => setTimeout(layout, 200));
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
-  // ---------- Herby z pliku ----------
+  // ---------- Herby ----------
+  // Herby są własnością klubów (źródło plików: FootyLogos.com); zestaw do prywatnej, niekomercyjnej zabawy.
   function applyCrests() {
     THEMES.clubs.tiles = clubTiles();
     if (game && game.theme === 'clubs' && els.length) render();
   }
-  crests = store.get('crests', null);
+  store.del('crests');   // porządek po wcześniejszej wersji z wgrywaniem pliku
   applyCrests();
-
-  $('crestFile').addEventListener('change', async e => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!f) return;
-    try {
-      const data = JSON.parse(await f.text());
-      if (data.type !== 'mahjong-herby' || !data.clubs) throw new Error('zły plik');
-      const ok = {};
-      for (const [code] of CLUBS) {
-        const v = data.clubs[code];
-        if (typeof v === 'string' && /^data:image\/(png|webp|jpeg|svg\+xml);base64,/.test(v)) ok[code] = v;
-      }
-      const n = Object.keys(ok).length;
-      if (!n) throw new Error('brak herbów');
-      if (!store.set('crests', ok)) { toast('❌ Za mało miejsca na tablecie'); return; }
-      crests = ok; applyCrests(); buildMenu();
-      toast(`✅ Wgrano herby: ${n}`);
-    } catch { toast('❌ To nie jest plik z herbami'); }
-  });
-  $('btnCrestsDel').onclick = () => { store.del('crests'); crests = null; applyCrests(); buildMenu(); toast('Usunięto herby'); };
+  fetch('herby/herby-liga-mistrzow.json').then(r => r.json()).then(data => {
+    const ok = {};
+    for (const [code] of CLUBS) {
+      const v = data && data.clubs && data.clubs[code];
+      if (typeof v === 'string' && /^data:image\/(png|webp|jpeg);base64,/.test(v)) ok[code] = v;
+    }
+    if (Object.keys(ok).length) { crests = ok; applyCrests(); if ($('menu').classList.contains('show')) buildMenu(); }
+  }).catch(() => {});
+  $('optCrests').onchange = e => { settings.crests = e.target.checked; saveSettings(); applyCrests(); buildMenu(); };
 
   // ---------- Start ----------
   if (!load()) openMenu();
