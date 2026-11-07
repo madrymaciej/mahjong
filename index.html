@@ -61,6 +61,14 @@
   }
   .tile .face { font-size: 46px; line-height: 1; pointer-events: none; display: flex; }
   .tile .face svg { width: 50px; height: 62px; display: block; }
+  .tile .face img { width: 56px; height: 56px; object-fit: contain; display: block; }
+  #crestBox { display: none; margin-top: 10px; }
+  #crestBox.show { display: block; }
+  #crestBox .row { margin-top: 0; }
+  .filebtn { position: relative; flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 600; background: #eef3ef; border-radius: 14px; min-height: 48px; padding: 10px 14px; }
+  .filebtn input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+  #crestInfo { font-size: 14px; color: #4b5d52; margin: 6px 0 0; }
   #themes { grid-template-columns: repeat(2, 1fr); }
   .tile.blocked.dim { filter: brightness(.72) saturate(.75); }
   .tile.selected { background: var(--sel); border-color: #e0a800; transform: translate(-2px,-3px); }
@@ -98,6 +106,15 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 100001; white-space: nowrap;
   }
   #toast.show { opacity: 1; }
+  @media (max-height: 860px) {
+    .panel { padding: 14px 18px; }
+    .panel .big { font-size: 40px; }
+    .panel h1 { font-size: 26px; margin: 0 0 4px; }
+    .panel h2 { margin: 10px 0 6px; font-size: 16px; }
+    .panel p { font-size: 16px; margin: 4px 0; }
+    .toggle { padding: 4px 2px; font-size: 16px; }
+    .panel .primary { margin-top: 10px; min-height: 50px; }
+  }
   @media (max-width: 600px) {
     button { padding: 8px 10px; font-size: 15px; min-height: 44px; }
     .stats { font-size: 15px; gap: 10px; }
@@ -130,6 +147,13 @@
     <div class="choices" id="levels"></div>
     <h2>Obrazki</h2>
     <div class="choices" id="themes"></div>
+    <div id="crestBox">
+      <div class="row">
+        <label class="filebtn native">📥 Wgraj herby<input type="file" id="crestFile"></label>
+        <button id="btnCrestsDel">🗑 Usuń herby</button>
+      </div>
+      <p id="crestInfo"></p>
+    </div>
     <h2>Ustawienia</h2>
     <label class="toggle">Przyciemniaj zablokowane kafelki <input type="checkbox" id="optDim"></label>
     <label class="toggle">Dźwięki <input type="checkbox" id="optSound"></label>
@@ -205,13 +229,13 @@
     ['BET', '#00954c', '#ffffff', 'stripes', 'Real Betis'],
     ['RMA', '#ffffff', '#febe10', 'band',    'Real Madryt'],
     ['ROM', '#8e1f2f', '#f0bc42', 'halves',  'AS Roma'],
-    ['SAB', '#0b2c6b', '#ffffff', 'hoops',   'Sabah'],
+    ['SAB', '#e5007e', '#111111', 'chief',   'Sabah'],
     ['SHA', '#f26522', '#111111', 'chief',   'Szachtar Donieck'],
     ['SLA', '#e1001a', '#ffffff', 'halves',  'Slavia Praga'],
     ['SLO', '#6fb7e6', '#ffffff', 'hoops',   'Slovan Bratysława'],
     ['SCP', '#008057', '#ffffff', 'hoops',   'Sporting CP'],
     ['VFB', '#ffffff', '#e32219', 'band',    'VfB Stuttgart'],
-    ['VIK', '#00205b', '#ffffff', 'band',    'Viking'],
+    ['VIK', '#7a1f2b', '#c9a24a', 'band',    'Viking'],
     ['VIL', '#ffe667', '#005187', 'chief',   'Villarreal'],
   ];
   function shield([code, c1, c2, pat, name], i) {
@@ -231,7 +255,14 @@
         font-size="${fs}" fill="#fff" stroke="#111" stroke-width="7" stroke-linejoin="round" paint-order="stroke">${code}</text>
     </svg>`;
   }
-  THEMES.clubs = { name: '⚽ Liga Mistrzów', tiles: CLUBS.map(shield) };
+  // Prawdziwe herby nie są częścią gry (ani publicznej strony): użytkownik wgrywa je z pliku
+  // na swoim tablecie, a gra trzyma je wyłącznie w pamięci tego urządzenia.
+  let crests = null;
+  function clubTiles() {
+    return CLUBS.map((c, i) => crests && crests[c[0]]
+      ? `<img src="${crests[c[0]]}" alt="${c[4]}" draggable="false">` : shield(c, i));
+  }
+  THEMES.clubs = { name: '⚽ Liga Mistrzów', tiles: [] };
 
   // Współrzędne w półkafelkach: kafelek zajmuje [x,x+2) × [y,y+2) na warstwie z.
   function rect(arr, w, h, z, ox, oy) {
@@ -252,7 +283,7 @@
   // ---------- Pamięć (bezpieczna) ----------
   const store = {
     get(k, d) { try { const v = localStorage.getItem('mj_' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem('mj_' + k, JSON.stringify(v)); } catch {} },
+    set(k, v) { try { localStorage.setItem('mj_' + k, JSON.stringify(v)); return true; } catch { return false; } },
     del(k) { try { localStorage.removeItem('mj_' + k); } catch {} },
   };
 
@@ -540,6 +571,11 @@
     const best = store.get('best_' + settings.level, null);
     $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
     $('btnResume').style.display = running ? '' : 'none';
+    $('crestBox').classList.toggle('show', settings.theme === 'clubs');
+    const n = crests ? Object.keys(crests).length : 0;
+    $('crestInfo').textContent = n ? `✅ Na tym tablecie są wgrane herby (${n}).`
+      : 'Bez wgranych herbów gra pokazuje tarcze w barwach klubów.';
+    $('btnCrestsDel').disabled = !n;
   }
   function saveSettings() { store.set('settings', settings); }
   function openMenu() { buildMenu(); $('menu').classList.add('show'); }
@@ -568,13 +604,16 @@
   // Blokada powiększania (podwójne stuknięcie, szczypanie).
   // iOS ignoruje user-scalable=no, więc blokujemy domyślną obsługę dotyku w całości,
   // a przyciski i pola wyboru uruchamiamy sami na pointerup.
-  document.addEventListener('touchstart', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
-  document.addEventListener('touchmove', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
-  document.addEventListener('touchend', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  // Elementy z klasą .native (wybór pliku) obsługuje przeglądarka – tylko tak iPad otworzy okno wyboru pliku.
+  const blockTouch = e => { if (e.cancelable && !e.target.closest('.native')) e.preventDefault(); };
+  document.addEventListener('touchstart', blockTouch, { passive: false });
+  document.addEventListener('touchmove', blockTouch, { passive: false });
+  document.addEventListener('touchend', blockTouch, { passive: false });
   ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(t =>
     document.addEventListener(t, e => e.preventDefault(), { passive: false }));
   document.addEventListener('pointerup', e => {
     if (e.pointerType === 'mouse') return;   // myszką działa zwykłe kliknięcie
+    if (e.target.closest('.native')) return;
     const el = e.target.closest('button, label, input');
     if (!el) return;
     const target = el.tagName === 'LABEL' ? el.querySelector('input') : el;
@@ -584,6 +623,35 @@
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', () => setTimeout(layout, 200));
   document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+
+  // ---------- Herby z pliku ----------
+  function applyCrests() {
+    THEMES.clubs.tiles = clubTiles();
+    if (game && game.theme === 'clubs' && els.length) render();
+  }
+  crests = store.get('crests', null);
+  applyCrests();
+
+  $('crestFile').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (data.type !== 'mahjong-herby' || !data.clubs) throw new Error('zły plik');
+      const ok = {};
+      for (const [code] of CLUBS) {
+        const v = data.clubs[code];
+        if (typeof v === 'string' && /^data:image\/(png|webp|jpeg|svg\+xml);base64,/.test(v)) ok[code] = v;
+      }
+      const n = Object.keys(ok).length;
+      if (!n) throw new Error('brak herbów');
+      if (!store.set('crests', ok)) { toast('❌ Za mało miejsca na tablecie'); return; }
+      crests = ok; applyCrests(); buildMenu();
+      toast(`✅ Wgrano herby: ${n}`);
+    } catch { toast('❌ To nie jest plik z herbami'); }
+  });
+  $('btnCrestsDel').onclick = () => { store.del('crests'); crests = null; applyCrests(); buildMenu(); toast('Usunięto herby'); };
 
   // ---------- Start ----------
   if (!load()) openMenu();

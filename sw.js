@@ -1,5 +1,5 @@
 // Zmień numer wersji przy każdej aktualizacji gry, żeby tablety pobrały nową wersję.
-const CACHE = 'mahjong-v4';
+const CACHE = 'mahjong-v5';
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 

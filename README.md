@@ -24,3 +24,8 @@ Po zmianie plików podbij numer `CACHE` w `sw.js` (np. `mahjong-v2`), żeby tabl
 ## Zestaw „Liga Mistrzów”
 36 klubów fazy ligowej Ligi Mistrzów 2026/27. To nie są oficjalne herby (chronione znaki towarowe),
 tylko własne tarcze w barwach klubów ze skrótem nazwy. Lista i barwy: tablica `CLUBS` w `index.html`.
+
+### Prawdziwe herby (opcjonalnie, tylko lokalnie)
+W menu przy zestawie „Liga Mistrzów” jest przycisk **Wgraj herby**. Wybierasz plik `herby-liga-mistrzow.json`
+(nie ma go w tym repozytorium) – gra zapisuje herby wyłącznie w pamięci danego tabletu.
+Format pliku: `{"type":"mahjong-herby","clubs":{"ARS":"data:image/png;base64,...", ...}}` (klucze = skróty z tablicy `CLUBS`).
