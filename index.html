@@ -132,6 +132,7 @@
     <button id="btnHint" title="Podpowiedź">💡 Podpowiedź</button>
     <button id="btnUndo" title="Cofnij">↩️ Cofnij</button>
     <button id="btnShuffle" title="Tasuj">🔀 Tasuj</button>
+    <button id="btnMusic" title="Muzyka">🎵</button>
     <button id="btnMenu" title="Menu">☰ Menu</button>
   </header>
   <div id="board-wrap"><div id="board"></div></div>
@@ -154,6 +155,7 @@
     <h2>Ustawienia</h2>
     <label class="toggle">Przyciemniaj zablokowane kafelki <input type="checkbox" id="optDim"></label>
     <label class="toggle">Dźwięki <input type="checkbox" id="optSound"></label>
+    <label class="toggle">Muzyka w tle <input type="checkbox" id="optMusic"></label>
     <div class="best" id="bestInfo"></div>
     <button class="primary" id="btnStart">▶️ Nowa gra</button>
     <button class="primary" id="btnResume" style="background:#eef3ef;color:#1d2b22;margin-top:8px">Wróć do gry</button>
@@ -284,7 +286,7 @@
     del(k) { try { localStorage.removeItem('mj_' + k); } catch {} },
   };
 
-  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true, crests: true }, store.get('settings', {}));
+  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true, crests: true, music: true }, store.get('settings', {}));
 
   // ---------- Stan gry ----------
   let tiles = [];       // {x,y,z,t,alive}
@@ -520,11 +522,15 @@
 
   // ---------- Dźwięk ----------
   let actx;
+  function audio() {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended' && !document.hidden) actx.resume();
+    return actx;
+  }
   function beep(freq, dur) {
     if (!settings.sound) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
-      if (actx.state === 'suspended') actx.resume();
+      audio();
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = 'sine'; o.frequency.value = freq;
       g.gain.setValueAtTime(.12, actx.currentTime);
@@ -532,6 +538,106 @@
       o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur + .06);
     } catch {}
   }
+
+  // ---------- Muzyka w tle ----------
+  // Własny, generowany na bieżąco motyw (pentatonika D-dur): akordy, bas i melodia „spacerująca”
+  // po skali. Nie ma pliku z nagraniem, więc działa offline i nie ma kwestii praw autorskich.
+  const music = (() => {
+    const BPM = 76, E8 = 60 / BPM / 2;                 // długość ósemki w sekundach
+    const SCALE = [62, 64, 66, 69, 71, 74, 76, 78, 81]; // D E F# A H d e f# a
+    const PROG = [[50, 62, 66, 69], [47, 59, 62, 66], [43, 59, 62, 67], [45, 61, 64, 69],
+                  [50, 62, 66, 69], [47, 59, 62, 66], [40, 59, 64, 67], [45, 57, 61, 64]]; // bas + akord
+    const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+    let bus, echo, timer = null, step = 0, next = 0, idx = 4;
+
+    function setup(ctx) {
+      if (bus) return;
+      bus = ctx.createGain(); bus.gain.value = 0.0001; bus.connect(ctx.destination);
+      echo = ctx.createDelay(); echo.delayTime.value = E8 * 3;
+      const fb = ctx.createGain(); fb.gain.value = 0.28;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+      echo.connect(lp); lp.connect(fb); fb.connect(echo); lp.connect(bus);
+    }
+    function note(ctx, type, midi, t, dur, vol, attack, toEcho) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.value = hz(midi);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(bus); if (toEcho) g.connect(echo);
+      o.start(t); o.stop(t + dur + 0.05);
+    }
+    function play(ctx, s, t) {
+      const pos = s % 8, chord = PROG[Math.floor(s / 8) % PROG.length];
+      if (pos === 0) {
+        note(ctx, 'sine', chord[0], t, E8 * 7.5, 0.35, 0.02);
+        for (const m of chord.slice(1)) note(ctx, 'sine', m, t, E8 * 8, 0.05, 0.8);
+      }
+      if (pos === 4) note(ctx, 'sine', chord[0] + 12, t, E8 * 3.5, 0.18, 0.02);
+      // melodia: krok o 0–2 stopnie skali, na mocnej części taktu dźwięk z akordu
+      if (pos % 2 === 1 && Math.random() < 0.55) return;
+      if (Math.random() < 0.12) return;
+      idx = Math.max(0, Math.min(SCALE.length - 1, idx + [-2, -1, -1, 0, 1, 1, 2][Math.floor(Math.random() * 7)]));
+      let m = SCALE[idx];
+      if (pos === 0) {
+        const pcs = chord.slice(1).map(c => c % 12);
+        const cand = SCALE.map((n, i) => [n, i]).filter(([n]) => pcs.includes(n % 12));
+        if (cand.length) { const best = cand.reduce((a, b) => Math.abs(b[1] - idx) < Math.abs(a[1] - idx) ? b : a); m = best[0]; idx = best[1]; }
+      }
+      note(ctx, 'triangle', m, t, E8 * 2.6, 0.16, 0.01, true);
+    }
+    function tick() {
+      const ctx = actx;
+      if (!ctx || ctx.state !== 'running') return;
+      if (next < ctx.currentTime) next = ctx.currentTime + 0.05;
+      while (next < ctx.currentTime + 0.25) { play(ctx, step++, next); next += E8; }
+    }
+    return {
+      start() {
+        try {
+          const ctx = audio(); setup(ctx);
+          bus.gain.cancelScheduledValues(ctx.currentTime);
+          bus.gain.setTargetAtTime(0.5, ctx.currentTime, 0.6);
+          if (!timer) { step = 0; next = 0; timer = setInterval(tick, 50); tick(); }
+        } catch {}
+      },
+      stop() {
+        if (!timer) return;
+        clearInterval(timer); timer = null;
+        try { bus.gain.setTargetAtTime(0.0001, actx.currentTime, 0.15); } catch {}
+      },
+      get on() { return !!timer; },
+    };
+  })();
+
+  function updateMusicBtn() {
+    const b = $('btnMusic');
+    b.textContent = settings.music ? '🎵' : '🔇';
+    b.title = settings.music ? 'Wyłącz muzykę' : 'Włącz muzykę';
+    b.style.opacity = settings.music ? '1' : '.6';
+  }
+  function setMusic(on) {
+    settings.music = on; saveSettings(); updateMusicBtn();
+    if (on) music.start(); else music.stop();
+    $('optMusic').checked = on;
+  }
+  $('btnMusic').onclick = () => setMusic(!settings.music);
+  $('optMusic').onchange = e => setMusic(e.target.checked);
+  // Przeglądarki pozwalają włączyć dźwięk dopiero po dotknięciu ekranu – startujemy przy pierwszym dotyku.
+  // (iPad odblokowuje dźwięk dopiero przy podniesieniu palca, dlatego pointerup/touchend).
+  const unlock = () => {
+    if (document.hidden) return;
+    if (settings.music && !music.on) music.start();
+    else if (settings.sound) try { audio(); } catch {}
+  };
+  document.addEventListener('pointerup', unlock, true);
+  document.addEventListener('touchend', unlock, true);
+  document.addEventListener('visibilitychange', () => {
+    if (!actx) return;
+    if (document.hidden) actx.suspend().catch(() => {});
+    else if (settings.music || settings.sound) actx.resume().catch(() => {});
+  });
+  updateMusicBtn();
 
   // ---------- Zapis ----------
   function save() {
@@ -565,6 +671,7 @@
     }
     $('optDim').checked = settings.dim;
     $('optSound').checked = settings.sound;
+    $('optMusic').checked = settings.music;
     const best = store.get('best_' + settings.level, null);
     $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
     $('btnResume').style.display = running ? '' : 'none';
