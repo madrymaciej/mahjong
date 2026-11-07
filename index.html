@@ -83,6 +83,15 @@
     display: none; align-items: center; justify-content: center; z-index: 100000; padding: 16px;
   }
   .overlay.show { display: flex; }
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .screen.show { display: flex; }
+  .screen .panel { box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  body.in-menu #app { display: none; }
+  #btnMusic { display: flex; align-items: center; justify-content: center; min-width: 52px; }
+  #btnMusic svg { width: 28px; height: 28px; display: block; }
+  .panel .primary.secondary { background: #eef3ef; color: #1d2b22; margin-top: 8px; }
+  .panel .primary.danger { background: #fdecec; color: #b3261e; }
   .panel {
     background: #fff; color: #1d2b22; border-radius: 22px; padding: 22px;
     width: min(520px, 100%); max-height: 100%; overflow: auto; text-align: center;
@@ -132,13 +141,13 @@
     <button id="btnHint" title="Podpowiedź">💡 Podpowiedź</button>
     <button id="btnUndo" title="Cofnij">↩️ Cofnij</button>
     <button id="btnShuffle" title="Tasuj">🔀 Tasuj</button>
-    <button id="btnMusic" title="Muzyka">🎵</button>
-    <button id="btnMenu" title="Menu">☰ Menu</button>
+    <button id="btnMusic" title="Muzyka"></button>
+    <button id="btnPause" title="Pauza">⏸️ Pauza</button>
   </header>
   <div id="board-wrap"><div id="board"></div></div>
 </div>
 
-<div class="overlay" id="menu">
+<div class="screen" id="menu">
   <div class="panel">
     <p class="big">🀄</p>
     <h1>Mahjong</h1>
@@ -158,7 +167,17 @@
     <label class="toggle">Muzyka w tle <input type="checkbox" id="optMusic"></label>
     <div class="best" id="bestInfo"></div>
     <button class="primary" id="btnStart">▶️ Nowa gra</button>
-    <button class="primary" id="btnResume" style="background:#eef3ef;color:#1d2b22;margin-top:8px">Wróć do gry</button>
+    <button class="primary secondary" id="btnResume">⏯ Kontynuuj zapisaną grę</button>
+  </div>
+</div>
+
+<div class="overlay" id="pause">
+  <div class="panel">
+    <p class="big">⏸️</p>
+    <h1>Pauza</h1>
+    <button class="primary" id="btnPauseContinue">▶️ Kontynuuj</button>
+    <button class="primary secondary" id="btnRestart">🔄 Restart</button>
+    <button class="primary secondary danger" id="btnQuit">🚪 Zakończ</button>
   </div>
 </div>
 
@@ -169,7 +188,7 @@
     <p id="winText"></p>
     <p id="winBest" style="font-weight:700;color:#1f6f4a"></p>
     <button class="primary" id="btnAgain">▶️ Zagraj jeszcze raz</button>
-    <div class="row"><button id="btnWinMenu">☰ Zmień poziom</button></div>
+    <div class="row"><button id="btnWinMenu">🏠 Menu główne</button></div>
   </div>
 </div>
 
@@ -179,7 +198,7 @@
     <h1>Brak ruchów</h1>
     <p>Nie ma już pasujących wolnych par.</p>
     <button class="primary" id="btnStuckShuffle">🔀 Potasuj kafelki</button>
-    <div class="row"><button id="btnStuckUndo">↩️ Cofnij</button><button id="btnStuckNew">Nowa gra</button></div>
+    <div class="row"><button id="btnStuckUndo">↩️ Cofnij</button><button id="btnStuckNew">🏠 Menu główne</button></div>
   </div>
 </div>
 
@@ -296,6 +315,7 @@
   let elapsed = 0;      // sekundy
   let running = false;
   let game = null;      // {level, theme}
+  let start = null;     // układ z początku partii (do Restartu)
   let els = [];
 
   const $ = id => document.getElementById(id);
@@ -364,6 +384,14 @@
     const pairTypes = [];
     for (let p = 0; p < nPairs; p++) pairTypes.push(kindOrder[p % kinds]);
     dealSolvable(tiles.map((_, i) => i), pairTypes);
+    start = tiles.map(t => ({ ...t }));
+    history = []; selected = -1; moves = 0; elapsed = 0; running = true;
+    render(); save(); checkStuck();
+  }
+
+  function restartGame() {
+    if (!start) return;
+    tiles = start.map(t => ({ ...t, alive: true }));
     history = []; selected = -1; moves = 0; elapsed = 0; running = true;
     render(); save(); checkStuck();
   }
@@ -612,9 +640,10 @@
 
   function updateMusicBtn() {
     const b = $('btnMusic');
-    b.textContent = settings.music ? '🎵' : '🔇';
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="${settings.music ? '#ff3b3b' : '#9aa59f'}" d="M9 3v10.55A4 4 0 1 0 11 17V7h7V3H9z"/>
+      ${settings.music ? '' : '<line x1="3" y1="3" x2="21" y2="21" stroke="#ff3b3b" stroke-width="2.6" stroke-linecap="round"/>'}</svg>`;
     b.title = settings.music ? 'Wyłącz muzykę' : 'Włącz muzykę';
-    b.style.opacity = settings.music ? '1' : '.6';
   }
   function setMusic(on) {
     settings.music = on; saveSettings(); updateMusicBtn();
@@ -642,12 +671,13 @@
   // ---------- Zapis ----------
   function save() {
     if (!game) return;
-    store.set('game', { game, tiles, history, moves, elapsed });
+    store.set('game', { game, tiles, history, moves, elapsed, start });
   }
   function load() {
     const s = store.get('game', null);
     if (!s || !s.tiles || !LEVELS[s.game?.level] || !THEMES[s.game?.theme]) return false;
     ({ game, tiles, history, moves, elapsed } = s);
+    start = s.start || tiles.map(t => ({ ...t, alive: true }));
     selected = -1; running = tiles.some(t => t.alive);
     render();
     return running;
@@ -674,33 +704,43 @@
     $('optMusic').checked = settings.music;
     const best = store.get('best_' + settings.level, null);
     $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
-    $('btnResume').style.display = running ? '' : 'none';
+    $('btnResume').style.display = hasSaved() ? '' : 'none';
     $('crestBox').classList.toggle('show', settings.theme === 'clubs');
     $('optCrests').checked = settings.crests;
     $('crestInfo').textContent = !settings.crests ? 'Wyłączone: gra pokazuje tarcze w barwach klubów.'
       : crests ? '' : 'Herby jeszcze się nie wczytały (potrzebny internet przy pierwszym uruchomieniu).';
   }
   function saveSettings() { store.set('settings', settings); }
-  function openMenu() { buildMenu(); $('menu').classList.add('show'); }
+  function hasSaved() { const g = store.get('game', null); return !!(g && g.tiles && g.tiles.some(t => t.alive)); }
+  // Menu główne to osobny ekran (nie okienko nad grą).
+  function openMenu() {
+    closeOverlays(); selected = -1;
+    buildMenu(); $('menu').classList.add('show'); document.body.classList.add('in-menu');
+  }
+  function closeMenu() { $('menu').classList.remove('show'); document.body.classList.remove('in-menu'); requestAnimationFrame(layout); }
+  function quitGame() { running = false; store.del('game'); game = null; start = null; openMenu(); }
   function closeOverlays() { document.querySelectorAll('.overlay').forEach(o => o.classList.remove('show')); }
 
   $('optDim').onchange = e => { settings.dim = e.target.checked; saveSettings(); if (els.length) updateClasses(); };
   $('optSound').onchange = e => { settings.sound = e.target.checked; saveSettings(); };
-  $('btnStart').onclick = () => { closeOverlays(); newGame(); };
-  $('btnResume').onclick = closeOverlays;
-  $('btnMenu').onclick = openMenu;
+  $('btnStart').onclick = () => { closeMenu(); newGame(); };
+  $('btnResume').onclick = () => { if (load()) { closeMenu(); checkStuck(); } else buildMenu(); };
+  $('btnPause').onclick = () => { selected = -1; updateClasses(); $('pause').classList.add('show'); };
+  $('btnPauseContinue').onclick = closeOverlays;
+  $('btnRestart').onclick = () => { closeOverlays(); restartGame(); toast('🔄 Od początku'); };
+  $('btnQuit').onclick = quitGame;
   $('btnHint').onclick = hint;
   $('btnUndo').onclick = undo;
   $('btnShuffle').onclick = reshuffle;
   $('btnAgain').onclick = () => { closeOverlays(); newGame(); };
-  $('btnWinMenu').onclick = () => { closeOverlays(); openMenu(); };
+  $('btnWinMenu').onclick = openMenu;
   $('btnStuckShuffle').onclick = () => { closeOverlays(); reshuffle(); };
   $('btnStuckUndo').onclick = () => { closeOverlays(); undo(); };
-  $('btnStuckNew').onclick = () => { closeOverlays(); openMenu(); };
+  $('btnStuckNew').onclick = quitGame;
 
   // ---------- Zegar ----------
   setInterval(() => {
-    const paused = document.hidden || document.querySelector('.overlay.show');
+    const paused = document.hidden || document.querySelector('.overlay.show') || document.body.classList.contains('in-menu');
     if (running && !paused) { elapsed++; $('time').textContent = fmt(elapsed); if (elapsed % 5 === 0) save(); }
   }, 1000);
 
@@ -746,7 +786,7 @@
   $('optCrests').onchange = e => { settings.crests = e.target.checked; saveSettings(); applyCrests(); buildMenu(); };
 
   // ---------- Start ----------
-  if (!load()) openMenu();
+  openMenu();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

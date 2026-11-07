@@ -9,7 +9,8 @@ i ma pusty bok z lewej albo z prawej. Wygrywasz, gdy zdejmiesz wszystkie kafelki
 
 - 💡 Podpowiedź – miga pasująca para
 - ↩️ Cofnij – cofa ostatni ruch
-- 🎵 / 🔇 – włącza i wyłącza muzykę w tle (własny motyw generowany w przeglądarce, bez plików audio)
+- ⏸️ Pauza – okienko z opcjami: Kontynuuj, Restart (ten sam układ od początku), Zakończ (powrót do menu głównego)
+- 🎵 (czerwona nutka) – włącza i wyłącza muzykę w tle (własny motyw generowany w przeglądarce, bez plików audio)
 - 🔀 Tasuj – miesza pozostałe kafelki (zawsze da się dokończyć; w razie potrzeby gra sama cofnie kilka ruchów)
 
 Każde rozdanie jest generowane tak, żeby dało się je ułożyć do końca. Gra zapamiętuje rozpoczętą partię i rekordy czasu.
