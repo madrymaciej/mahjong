@@ -32,3 +32,8 @@ Herby klubów są znakami towarowymi i utworami należącymi do ich właściciel
 powiązany z żadnym klubem, UEFA ani FootyLogos i nie rości sobie żadnych praw do herbów. Pliki herbów pochodzą
 z bazy [FootyLogos.com](https://www.footylogos.com/logo-usage-right) i są używane wyłącznie w prywatnej,
 niekomercyjnej grze dla dzieci. Właściciel praw, który chce usunięcia herbu, może zgłosić to w Issues – zostanie usunięty.
+
+## Gracze i wyniki
+W menu głównym wybiera się gracza (Miki / Maks). Po każdej wygranej gra zapisuje: datę, gracza, poziom, zestaw obrazków,
+czas, liczbę podpowiedzi i cofnięć. Tabela „🏆 Wyniki” ma filtry po graczu i poziomie; ⭐ oznacza rekord gracza na poziomie.
+Wyniki są zapisywane w pamięci danego tabletu (localStorage, klucz `mj_results`, maks. 1000 wpisów) – nie synchronizują się między tabletami.

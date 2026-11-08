@@ -127,6 +127,24 @@
     border-radius: 999px; padding: 3px 14px; margin-top: 4px; }
   .lv-best { font-size: 13px; opacity: .9; min-height: 16px; }
   @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  .players { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .players button { min-height: 60px; font-size: 22px !important; font-weight: 800; }
+  .players button.on { background: #3a6ee8 !important; color: #fff !important; box-shadow: 0 4px 0 #2449a8; }
+  .menu-links { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+  .menu-links button { flex: 0 1 auto; }
+  .results-panel { width: min(760px, 100%); display: flex; flex-direction: column; max-height: 100%; }
+  .filters { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+  .filters button.on { background: var(--felt) !important; color: #fff !important; }
+  .res-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; flex: 1; min-height: 120px;
+    border: 1px solid #e3e9e5; border-radius: 12px; }
+  .res-table { width: 100%; border-collapse: collapse; font-size: 16px; text-align: left; }
+  .res-table th { position: sticky; top: 0; background: #f3f7f4; font-size: 13px; color: #4b5d52; font-weight: 700; }
+  .res-table th, .res-table td { padding: 8px 10px; border-bottom: 1px solid #edf1ee; white-space: nowrap; }
+  .res-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .res-table tr.best td { background: #fff8db; }
+  .res-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 4px 0 10px; }
+  .res-summary div { background: #f3f7f4; border-radius: 12px; padding: 8px; font-size: 14px; }
+  .res-summary b { display: block; font-size: 18px; }
   .settings-link { background: transparent !important; color: #4b5d52 !important; margin-top: 12px; font-size: 16px; }
   .panel button { color: #1d2b22; background: #eef3ef; }
   .panel button.on { background: var(--felt); color: #fff; }
@@ -178,6 +196,8 @@
     <h1 class="logo">🀄 Mahjong</h1>
     <p class="hint">Zdejmuj pary takich samych <b>wolnych</b> kafelków.</p>
     <button class="resume-card" id="btnResume">⏯️ Dokończ poprzednią grę</button>
+    <h2>Kto gra?</h2>
+    <div class="players" id="players"></div>
     <h2>1. Wybierz obrazki</h2>
     <div class="choices" id="themes"></div>
     <div id="crestBox">
@@ -186,7 +206,21 @@
     </div>
     <h2>2. Dotknij poziomu i graj!</h2>
     <div class="level-cards" id="levels"></div>
-    <button class="settings-link" id="btnSettings">⚙️ Ustawienia</button>
+    <div class="menu-links">
+      <button class="settings-link" id="btnResults">🏆 Wyniki</button>
+      <button class="settings-link" id="btnSettings">⚙️ Ustawienia</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="resultsDlg">
+  <div class="panel results-panel">
+    <h1>🏆 Wyniki</h1>
+    <div class="filters" id="resPlayers"></div>
+    <div class="filters" id="resLevels"></div>
+    <div class="res-summary" id="resSummary"></div>
+    <div class="res-scroll native" id="resScroll"></div>
+    <button class="primary" id="btnResultsClose">✔️ Zamknij</button>
   </div>
 </div>
 
@@ -214,7 +248,7 @@
 <div class="overlay" id="win">
   <div class="panel">
     <p class="big">🏆</p>
-    <h1>Brawo!</h1>
+    <h1 id="winTitle">Brawo!</h1>
     <p id="winText"></p>
     <p id="winBest" style="font-weight:700;color:#1f6f4a"></p>
     <button class="primary" id="btnAgain">▶️ Zagraj jeszcze raz</button>
@@ -335,7 +369,7 @@
     del(k) { try { localStorage.removeItem('mj_' + k); } catch {} },
   };
 
-  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true, crests: true, music: true }, store.get('settings', {}));
+  const settings = Object.assign({ level: 'easy', theme: 'animals', dim: true, sound: true, crests: true, music: true, player: 'Miki' }, store.get('settings', {}));
 
   // ---------- Stan gry ----------
   let tiles = [];       // {x,y,z,t,alive}
@@ -406,7 +440,7 @@
 
   function newGame() {
     const L = LEVELS[settings.level];
-    game = { level: settings.level, theme: settings.theme };
+    game = { level: settings.level, theme: settings.theme, player: settings.player, hints: 0, undos: 0, shuffles: 0 };
     tiles = L.build().map(p => ({ ...p, t: 0, alive: true }));
     const nPairs = tiles.length / 2;
     const kinds = Math.min(L.kinds, THEMES[settings.theme].tiles.length);
@@ -422,11 +456,13 @@
   function restartGame() {
     if (!start) return;
     tiles = start.map(t => ({ ...t, alive: true }));
+    Object.assign(game, { hints: 0, undos: 0, shuffles: 0 });
     history = []; selected = -1; moves = 0; elapsed = 0; running = true;
     render(); save(); checkStuck();
   }
 
   function reshuffle() {
+    if (game) game.shuffles = (game.shuffles || 0) + 1;
     // Jeśli układu nie da się już dokończyć (np. dwa kafelki leżą jeden na drugim),
     // cofamy tyle ruchów, ile trzeba, i dopiero wtedy tasujemy.
     let undone = 0;
@@ -485,6 +521,7 @@
     if (!last) { toast('Nie ma czego cofać'); return; }
     last.forEach(i => tiles[i].alive = true);
     moves = Math.max(0, moves - 1);
+    if (game) game.undos = (game.undos || 0) + 1;
     selected = -1; running = true;
     updateClasses(); updateStats(); save();
   }
@@ -492,6 +529,7 @@
   function hint() {
     const m = findMoves(1)[0];
     if (!m) { showStuck(); return; }
+    if (game) game.hints = (game.hints || 0) + 1;
     m.forEach(i => { const e = els[i]; e.classList.remove('hint'); void e.offsetWidth; e.classList.add('hint'); });
     setTimeout(() => m.forEach(i => els[i].classList.remove('hint')), 2100);
   }
@@ -504,12 +542,14 @@
   function win() {
     running = false;
     store.del('game');
-    const key = 'best_' + game.level;
-    const best = store.get(key, null);
+    const player = game.player || settings.player;
+    const best = bestTime(player, game.level);
     const isBest = best == null || elapsed < best;
-    if (isBest) store.set(key, elapsed);
-    $('winText').textContent = `Poziom ${LEVELS[game.level].name.replace(/^\S+\s/, '')} ułożony w ${fmt(elapsed)}.`;
-    $('winBest').textContent = isBest ? '⭐ Nowy rekord! ⭐' : `Rekord: ${fmt(best)}`;
+    addResult({ ts: Date.now(), player, level: game.level, theme: game.theme, time: elapsed,
+      hints: game.hints || 0, undos: game.undos || 0, shuffles: game.shuffles || 0 });
+    $('winTitle').textContent = `Brawo, ${player}!`;
+    $('winText').textContent = `Poziom ${levelName(game.level)} ułożony w ${fmt(elapsed)}.`;
+    $('winBest').textContent = isBest ? '⭐ Nowy rekord! ⭐' : `Twój rekord: ${fmt(best)}`;
     [523, 659, 784, 1047].forEach((f, k) => setTimeout(() => beep(f, .15), k * 140));
     setTimeout(() => applause(), 450);
     setTimeout(() => $('win').classList.add('show'), 450);
@@ -747,13 +787,73 @@
     return running;
   }
 
+  // ---------- Wyniki ----------
+  // Zapisywane w pamięci tabletu (localStorage), najnowsze na końcu listy; maks. 1000 wpisów.
+  const PLAYERS = ['Miki', 'Maks'];
+  const levelName = k => LEVELS[k].name.replace(/^\S+\s/, '');
+  const themeName = k => (THEMES[k] ? THEMES[k].name : k);
+  function getResults() { const r = store.get('results', []); return Array.isArray(r) ? r : []; }
+  function addResult(r) { const all = getResults(); all.push(r); store.set('results', all.slice(-1000)); }
+  function bestTime(player, level) {
+    const t = getResults().filter(r => r.player === player && r.level === level).map(r => r.time);
+    return t.length ? Math.min(...t) : null;
+  }
+  const resFilter = { player: 'all', level: 'all' };
+  function renderResults() {
+    const mk = (box, items, key) => {
+      box.innerHTML = '';
+      for (const [val, label] of items) {
+        const b = document.createElement('button'); b.textContent = label;
+        b.className = resFilter[key] === val ? 'on' : '';
+        b.onclick = () => { resFilter[key] = val; renderResults(); };
+        box.appendChild(b);
+      }
+    };
+    mk($('resPlayers'), [['all', '👥 Wszyscy'], ...PLAYERS.map(p => [p, '👦 ' + p])], 'player');
+    mk($('resLevels'), [['all', 'Wszystkie poziomy'], ...Object.keys(LEVELS).map(k => [k, LEVELS[k].name])], 'level');
+    const all = getResults();
+    const rows = all.filter(r => (resFilter.player === 'all' || r.player === resFilter.player)
+                              && (resFilter.level === 'all' || r.level === resFilter.level)).reverse();
+    // podsumowanie: liczba gier i rekord każdego gracza na każdym poziomie (w ramach filtra)
+    const sum = $('resSummary'); sum.innerHTML = '';
+    for (const p of PLAYERS) {
+      if (resFilter.player !== 'all' && resFilter.player !== p) continue;
+      const mine = all.filter(r => r.player === p && (resFilter.level === 'all' || r.level === resFilter.level));
+      const bests = Object.keys(LEVELS).filter(k => resFilter.level === 'all' || k === resFilter.level)
+        .map(k => { const b = bestTime(p, k); return b != null ? `${levelName(k)} ${fmt(b)}` : null; }).filter(Boolean);
+      const d = document.createElement('div');
+      d.innerHTML = `<b>👦 ${p}: ${mine.length} ${mine.length === 1 ? 'gra' : (mine.length % 10 >= 2 && mine.length % 10 <= 4 && (mine.length % 100 < 10 || mine.length % 100 >= 20)) ? 'gry' : 'gier'}</b>${bests.length ? '🏆 ' + bests.join(' · ') : 'Brak rekordów'}`;
+      sum.appendChild(d);
+    }
+    if (!rows.length) { $('resScroll').innerHTML = '<p style="padding:16px">Jeszcze nie ma wyników. Ułóż całą planszę, a wynik pojawi się tutaj!</p>'; return; }
+    const fmtDate = ts => { const d = new Date(ts);
+      return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' +
+             d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }); };
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    $('resScroll').innerHTML = `<table class="res-table"><thead><tr><th>Data</th><th>Gracz</th><th>Poziom</th><th>Obrazki</th>
+      <th class="num">Czas</th><th class="num">💡</th><th class="num">↩️</th></tr></thead><tbody>${rows.map(r => {
+        const isBest = bestTime(r.player, r.level) === r.time;
+        return `<tr class="${isBest ? 'best' : ''}"><td>${fmtDate(r.ts)}</td><td>${esc(r.player)}</td><td>${esc(levelName(r.level))}</td>
+          <td>${esc(themeName(r.theme))}</td><td class="num">${isBest ? '⭐ ' : ''}${fmt(r.time)}</td>
+          <td class="num">${r.hints}</td><td class="num">${r.undos}</td></tr>`; }).join('')}</tbody></table>`;
+    $('resScroll').scrollTop = 0;
+  }
+  // przeniesienie starych rekordów (sprzed podziału na graczy) nie jest potrzebne – zostawiamy je w spokoju
+
   // ---------- Menu ----------
   function buildMenu() {
+    const pl = $('players'); pl.innerHTML = '';
+    for (const name of PLAYERS) {
+      const b = document.createElement('button');
+      b.textContent = '👦 ' + name; b.className = settings.player === name ? 'on' : '';
+      b.onclick = () => { settings.player = name; saveSettings(); buildMenu(); };
+      pl.appendChild(b);
+    }
     // Karty poziomów: dotknięcie od razu zaczyna grę.
     const lv = $('levels'); lv.innerHTML = '';
     for (const k in LEVELS) {
       const [emoji, ...rest] = LEVELS[k].name.split(' ');
-      const best = store.get('best_' + k, null);
+      const best = bestTime(settings.player, k);
       const b = document.createElement('button');
       b.className = 'lv-' + k;
       b.innerHTML = `<span class="lv-emoji">${emoji}</span><span class="lv-name">${rest.join(' ')}</span>
@@ -793,6 +893,8 @@
   $('optSound').onchange = e => { settings.sound = e.target.checked; saveSettings(); };
   $('btnSettings').onclick = () => $('settingsDlg').classList.add('show');
   $('btnSettingsDone').onclick = () => $('settingsDlg').classList.remove('show');
+  $('btnResults').onclick = () => { resFilter.player = settings.player; resFilter.level = 'all'; renderResults(); $('resultsDlg').classList.add('show'); };
+  $('btnResultsClose').onclick = () => { $('resultsDlg').classList.remove('show'); buildMenu(); };
   $('btnResume').onclick = () => { if (load()) { closeMenu(); checkStuck(); } else buildMenu(); };
   $('btnPause').onclick = () => { selected = -1; updateClasses(); $('pause').classList.add('show'); };
   $('btnPauseContinue').onclick = closeOverlays;
