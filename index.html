@@ -102,6 +102,32 @@
   .panel p { margin: 6px 0; font-size: 18px; }
   .panel .big { font-size: 64px; margin: 0; }
   .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .menu-panel { width: min(640px, 100%); }
+  .menu-panel .logo { font-size: 38px; margin: 0; }
+  .menu-panel .hint { font-size: 16px; color: #4b5d52; margin: 2px 0 8px; }
+  .menu-panel h2 { font-size: 20px; color: #1d2b22; margin: 14px 0 8px; }
+  .panel button.on { box-shadow: inset 0 0 0 3px #145c3a; }
+  .resume-card { width: 100%; margin-top: 6px; min-height: 56px; font-size: 20px !important;
+    background: #ffd84d !important; color: #4a3500 !important; box-shadow: 0 4px 0 #d4a900; }
+  .level-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .level-cards button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 128px; border-radius: 20px; color: #fff !important; padding: 10px 6px;
+    box-shadow: 0 6px 0 rgba(0,0,0,.25); animation: bob 1.6s ease-in-out infinite;
+  }
+  .level-cards button:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+  .level-cards button:nth-child(2) { animation-delay: .2s; }
+  .level-cards button:nth-child(3) { animation-delay: .4s; }
+  .level-cards .lv-easy { background: #2e9e5b !important; }
+  .level-cards .lv-medium { background: #f08c1a !important; }
+  .level-cards .lv-hard { background: #d9443a !important; }
+  .lv-emoji { font-size: 34px; line-height: 1.1; }
+  .lv-name { font-size: 21px; font-weight: 800; }
+  .lv-play { font-size: 17px; font-weight: 900; letter-spacing: .5px; background: rgba(255,255,255,.25);
+    border-radius: 999px; padding: 3px 14px; margin-top: 4px; }
+  .lv-best { font-size: 13px; opacity: .9; min-height: 16px; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  .settings-link { background: transparent !important; color: #4b5d52 !important; margin-top: 12px; font-size: 16px; }
   .panel button { color: #1d2b22; background: #eef3ef; }
   .panel button.on { background: var(--felt); color: #fff; }
   .panel .primary { background: var(--felt); color: #fff; width: 100%; margin-top: 18px; font-size: 21px; min-height: 58px; }
@@ -148,26 +174,30 @@
 </div>
 
 <div class="screen" id="menu">
-  <div class="panel">
-    <p class="big">🀄</p>
-    <h1>Mahjong</h1>
-    <p>Dotknij dwóch takich samych <b>wolnych</b> kafelków, żeby je zdjąć.</p>
-    <p style="font-size:15px;color:#4b5d52">Kafelek jest wolny, gdy nic na nim nie leży i ma pusty bok z lewej albo z prawej.</p>
-    <h2>Poziom</h2>
-    <div class="choices" id="levels"></div>
-    <h2>Obrazki</h2>
+  <div class="panel menu-panel">
+    <h1 class="logo">🀄 Mahjong</h1>
+    <p class="hint">Zdejmuj pary takich samych <b>wolnych</b> kafelków.</p>
+    <button class="resume-card" id="btnResume">⏯️ Dokończ poprzednią grę</button>
+    <h2>1. Wybierz obrazki</h2>
     <div class="choices" id="themes"></div>
     <div id="crestBox">
       <label class="toggle">Prawdziwe herby klubów <input type="checkbox" id="optCrests"></label>
       <p id="crestInfo"></p>
     </div>
-    <h2>Ustawienia</h2>
+    <h2>2. Dotknij poziomu i graj!</h2>
+    <div class="level-cards" id="levels"></div>
+    <button class="settings-link" id="btnSettings">⚙️ Ustawienia</button>
+  </div>
+</div>
+
+<div class="overlay" id="settingsDlg">
+  <div class="panel">
+    <h1>⚙️ Ustawienia</h1>
     <label class="toggle">Przyciemniaj zablokowane kafelki <input type="checkbox" id="optDim"></label>
     <label class="toggle">Dźwięki <input type="checkbox" id="optSound"></label>
     <label class="toggle">Muzyka w tle <input type="checkbox" id="optMusic"></label>
-    <div class="best" id="bestInfo"></div>
-    <button class="primary" id="btnStart">▶️ Nowa gra</button>
-    <button class="primary secondary" id="btnResume">⏯ Kontynuuj zapisaną grę</button>
+    <p style="font-size:15px;color:#4b5d52;margin-top:12px">Kafelek jest wolny, gdy nic na nim nie leży i ma pusty bok z lewej albo z prawej.</p>
+    <button class="primary" id="btnSettingsDone">✔️ Gotowe</button>
   </div>
 </div>
 
@@ -685,16 +715,22 @@
 
   // ---------- Menu ----------
   function buildMenu() {
+    // Karty poziomów: dotknięcie od razu zaczyna grę.
     const lv = $('levels'); lv.innerHTML = '';
     for (const k in LEVELS) {
-      const b = document.createElement('button'); b.textContent = LEVELS[k].name;
-      b.className = settings.level === k ? 'on' : '';
-      b.onclick = () => { settings.level = k; saveSettings(); buildMenu(); };
+      const [emoji, ...rest] = LEVELS[k].name.split(' ');
+      const best = store.get('best_' + k, null);
+      const b = document.createElement('button');
+      b.className = 'lv-' + k;
+      b.innerHTML = `<span class="lv-emoji">${emoji}</span><span class="lv-name">${rest.join(' ')}</span>
+        <span class="lv-play">▶ GRAJ</span><span class="lv-best">${best != null ? '🏆 ' + fmt(best) : ''}</span>`;
+      b.onclick = () => { settings.level = k; saveSettings(); closeMenu(); newGame(); };
       lv.appendChild(b);
     }
     const th = $('themes'); th.innerHTML = '';
     for (const k in THEMES) {
-      const b = document.createElement('button'); b.textContent = THEMES[k].name;
+      const b = document.createElement('button');
+      b.textContent = (settings.theme === k ? '✓ ' : '') + THEMES[k].name;
       b.className = settings.theme === k ? 'on' : '';
       b.onclick = () => { settings.theme = k; saveSettings(); buildMenu(); };
       th.appendChild(b);
@@ -702,8 +738,6 @@
     $('optDim').checked = settings.dim;
     $('optSound').checked = settings.sound;
     $('optMusic').checked = settings.music;
-    const best = store.get('best_' + settings.level, null);
-    $('bestInfo').textContent = best != null ? `🏆 Rekord na tym poziomie: ${fmt(best)}` : '';
     $('btnResume').style.display = hasSaved() ? '' : 'none';
     $('crestBox').classList.toggle('show', settings.theme === 'clubs');
     $('optCrests').checked = settings.crests;
@@ -723,7 +757,8 @@
 
   $('optDim').onchange = e => { settings.dim = e.target.checked; saveSettings(); if (els.length) updateClasses(); };
   $('optSound').onchange = e => { settings.sound = e.target.checked; saveSettings(); };
-  $('btnStart').onclick = () => { closeMenu(); newGame(); };
+  $('btnSettings').onclick = () => $('settingsDlg').classList.add('show');
+  $('btnSettingsDone').onclick = () => $('settingsDlg').classList.remove('show');
   $('btnResume').onclick = () => { if (load()) { closeMenu(); checkStuck(); } else buildMenu(); };
   $('btnPause').onclick = () => { selected = -1; updateClasses(); $('pause').classList.add('show'); };
   $('btnPauseContinue').onclick = closeOverlays;
