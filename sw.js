@@ -1,5 +1,5 @@
 // Zmień numer wersji przy każdej aktualizacji gry, żeby tablety pobrały nową wersję.
-const CACHE = 'mahjong-v11';
+const CACHE = 'mahjong-v12';
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './herby/herby-liga-mistrzow.json'];
 
@@ -14,6 +14,7 @@ self.addEventListener('activate', e => {
 // Najpierw sieć (świeża wersja), a bez internetu – kopia z pamięci.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== location.origin) return;   // baza wyników i inne serwery – bez pamięci podręcznej
   e.respondWith(
     fetch(e.request).then(r => {
       const copy = r.clone();

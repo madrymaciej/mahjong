@@ -36,4 +36,11 @@ niekomercyjnej grze dla dzieci. Właściciel praw, który chce usunięcia herbu,
 ## Gracze i wyniki
 W menu głównym wybiera się gracza (Miki / Maks). Po każdej wygranej gra zapisuje: datę, gracza, poziom, zestaw obrazków,
 czas, liczbę podpowiedzi i cofnięć. Tabela „🏆 Wyniki” ma filtry po graczu i poziomie; ⭐ oznacza rekord gracza na poziomie.
-Wyniki są zapisywane w pamięci danego tabletu (localStorage, klucz `mj_results`, maks. 1000 wpisów) – nie synchronizują się między tabletami.
+
+### Baza wyników (Supabase)
+- Wynik zapisuje się najpierw na tablecie (localStorage `mj_results`), potem w tle trafia do tabeli `results` w Supabase.
+  Bez internetu wynik czeka i wysyła się przy następnej okazji (start gry, powrót sieci, otwarcie wyników).
+- Tabela wyników w grze pokazuje wyniki z obu tabletów (kopia z bazy w `mj_remote`).
+- Schemat i reguły dostępu: `supabase/migrations/`. Klucz publiczny w kodzie może tylko czytać i dodawać (RLS + GRANT);
+  zmiana i kasowanie – tylko w panelu Supabase.
+- `.github/workflows/supabase-keepalive.yml` – codzienne zapytanie, żeby darmowy projekt nie został uśpiony.

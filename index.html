@@ -216,6 +216,7 @@
 <div class="overlay" id="resultsDlg">
   <div class="panel results-panel">
     <h1>🏆 Wyniki</h1>
+    <p id="resSync" style="font-size:14px;color:#4b5d52;margin:0 0 4px"></p>
     <div class="filters" id="resPlayers"></div>
     <div class="filters" id="resLevels"></div>
     <div class="res-summary" id="resSummary"></div>
@@ -547,6 +548,7 @@
     const isBest = best == null || elapsed < best;
     addResult({ ts: Date.now(), player, level: game.level, theme: game.theme, time: elapsed,
       hints: game.hints || 0, undos: game.undos || 0, shuffles: game.shuffles || 0 });
+    syncResults();
     $('winTitle').textContent = `Brawo, ${player}!`;
     $('winText').textContent = `Poziom ${levelName(game.level)} ułożony w ${fmt(elapsed)}.`;
     $('winBest').textContent = isBest ? '⭐ Nowy rekord! ⭐' : `Twój rekord: ${fmt(best)}`;
@@ -788,15 +790,91 @@
   }
 
   // ---------- Wyniki ----------
-  // Zapisywane w pamięci tabletu (localStorage), najnowsze na końcu listy; maks. 1000 wpisów.
+  // Najpierw zapis lokalny (localStorage, klucz mj_results), potem wysyłka w tle do bazy Supabase.
+  // Wynik, którego nie udało się wysłać (brak internetu, uśpiona baza), czeka i wysyła się przy następnej okazji.
+  // Klucz poniżej jest publiczny z założenia: baza pozwala nim tylko czytać i dodawać wyniki (reguły RLS).
+  const CLOUD = {
+    url: 'https://gbbefqrxrmdigsgvkpcn.supabase.co/rest/v1/results',
+    key: 'sb_publishable_IiyBVOCG06Z-lJ4kf6cVuA_cKZSyyn9',
+  };
   const PLAYERS = ['Miki', 'Maks'];
   const levelName = k => LEVELS[k].name.replace(/^\S+\s/, '');
   const themeName = k => (THEMES[k] ? THEMES[k].name : k);
-  function getResults() { const r = store.get('results', []); return Array.isArray(r) ? r : []; }
-  function addResult(r) { const all = getResults(); all.push(r); store.set('results', all.slice(-1000)); }
+  const uid = () => { try { return crypto.randomUUID(); } catch { return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12); } };
+  const deviceId = store.get('device', null) || (() => { const d = 'tab-' + uid().slice(0, 8); store.set('device', d); return d; })();
+
+  function getResults() {
+    const r = store.get('results', []);
+    if (!Array.isArray(r)) return [];
+    let changed = false;
+    for (const x of r) if (!x.id) { x.id = uid(); x.synced = false; changed = true; }  // wyniki sprzed wersji z bazą
+    if (changed) store.set('results', r);
+    return r;
+  }
+  function addResult(r) { const all = getResults(); all.push({ id: uid(), synced: false, ...r }); store.set('results', all.slice(-1000)); }
+  // Wszystkie znane wyniki: z bazy (oba tablety) + lokalne, bez duplikatów.
+  function allResults() {
+    const map = new Map();
+    for (const r of store.get('remote', [])) map.set(r.id, r);
+    for (const r of getResults()) map.set(r.id, r);
+    return [...map.values()].sort((a, b) => a.ts - b.ts);
+  }
   function bestTime(player, level) {
-    const t = getResults().filter(r => r.player === player && r.level === level).map(r => r.time);
+    const t = allResults().filter(r => r.player === player && r.level === level).map(r => r.time);
     return t.length ? Math.min(...t) : null;
+  }
+
+  const toRow = r => ({ client_id: r.id, played_at: new Date(r.ts).toISOString(), player: r.player, level: r.level,
+    theme: String(r.theme).slice(0, 20), time_seconds: Math.max(1, Math.min(86400, r.time | 0)),
+    hints: r.hints | 0, undos: r.undos | 0, shuffles: r.shuffles | 0, device: deviceId });
+  const fromRow = x => ({ id: x.client_id, ts: Date.parse(x.played_at), player: x.player, level: x.level, theme: x.theme,
+    time: x.time_seconds, hints: x.hints, undos: x.undos, shuffles: x.shuffles, synced: true });
+  const cloudHeaders = extra => ({ apikey: CLOUD.key, ...extra });
+  let syncing = false, cloudState = 'unknown';
+
+  async function postRows(rows) {
+    const res = await fetch(CLOUD.url + '?on_conflict=client_id', { method: 'POST',
+      headers: cloudHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=ignore-duplicates' }),
+      body: JSON.stringify(rows) });
+    return res.status;
+  }
+  async function syncResults() {
+    if (syncing) return;
+    syncing = true;
+    try {
+      const pending = getResults().filter(r => !r.synced);
+      if (pending.length) {
+        const done = new Set();
+        const status = await postRows(pending.map(toRow));
+        if (status >= 200 && status < 300) pending.forEach(r => done.add(r.id));
+        else if (status === 400) {
+          // jeden błędny wpis nie może blokować reszty: wysyłamy po kolei, odrzucone pomijamy na stałe
+          for (const r of pending) {
+            const st = await postRows([toRow(r)]);
+            if ((st >= 200 && st < 300) || st === 400) done.add(r.id);
+          }
+        } else throw new Error('HTTP ' + status);
+        const fresh = getResults(); fresh.forEach(r => { if (done.has(r.id)) r.synced = true; }); store.set('results', fresh);
+      }
+      const res = await fetch(CLOUD.url + '?select=client_id,played_at,player,level,theme,time_seconds,hints,undos,shuffles&order=played_at.desc&limit=2000',
+        { headers: cloudHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      store.set('remote', (await res.json()).map(fromRow));
+      store.set('lastSync', Date.now());
+      cloudState = 'ok';
+    } catch { cloudState = navigator.onLine === false ? 'offline' : 'error'; }
+    finally { syncing = false; }
+    if ($('resultsDlg').classList.contains('show')) renderResults();
+    else if ($('menu').classList.contains('show')) buildMenu();
+  }
+  function syncInfo() {
+    const pending = getResults().filter(r => !r.synced).length;
+    const last = store.get('lastSync', null);
+    const t = last ? new Date(last).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : null;
+    if (syncing || cloudState === 'unknown') return '⏳ Łączę z bazą wyników…';
+    if (cloudState === 'ok') return `☁️ Wyniki z obu tabletów · zaktualizowano ${t}`;
+    const why = cloudState === 'offline' ? 'Brak internetu' : 'Baza wyników nie odpowiada';
+    return `📴 ${why} – pokazuję wyniki zapisane na tym tablecie${pending ? ` (${pending} czeka na wysłanie)` : ''}${t ? ` · ostatnio ${t}` : ''}.`;
   }
   const resFilter = { player: 'all', level: 'all' };
   function renderResults() {
@@ -811,7 +889,8 @@
     };
     mk($('resPlayers'), [['all', '👥 Wszyscy'], ...PLAYERS.map(p => [p, '👦 ' + p])], 'player');
     mk($('resLevels'), [['all', 'Wszystkie poziomy'], ...Object.keys(LEVELS).map(k => [k, LEVELS[k].name])], 'level');
-    const all = getResults();
+    $('resSync').textContent = syncInfo();
+    const all = allResults();
     const rows = all.filter(r => (resFilter.player === 'all' || r.player === resFilter.player)
                               && (resFilter.level === 'all' || r.level === resFilter.level)).reverse();
     // podsumowanie: liczba gier i rekord każdego gracza na każdym poziomie (w ramach filtra)
@@ -893,7 +972,7 @@
   $('optSound').onchange = e => { settings.sound = e.target.checked; saveSettings(); };
   $('btnSettings').onclick = () => $('settingsDlg').classList.add('show');
   $('btnSettingsDone').onclick = () => $('settingsDlg').classList.remove('show');
-  $('btnResults').onclick = () => { resFilter.player = settings.player; resFilter.level = 'all'; renderResults(); $('resultsDlg').classList.add('show'); };
+  $('btnResults').onclick = () => { resFilter.player = settings.player; resFilter.level = 'all'; renderResults(); $('resultsDlg').classList.add('show'); syncResults(); };
   $('btnResultsClose').onclick = () => { $('resultsDlg').classList.remove('show'); buildMenu(); };
   $('btnResume').onclick = () => { if (load()) { closeMenu(); checkStuck(); } else buildMenu(); };
   $('btnPause').onclick = () => { selected = -1; updateClasses(); $('pause').classList.add('show'); };
@@ -958,6 +1037,9 @@
 
   // ---------- Start ----------
   openMenu();
+  syncResults();
+  window.addEventListener('online', syncResults);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncResults(); });
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

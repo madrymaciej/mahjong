@@ -1,0 +1,22 @@
+# Codzienne zapytanie do bazy wyników, żeby darmowy projekt Supabase nie został uśpiony
+# (darmowe projekty są wstrzymywane po ok. tygodniu bez aktywności).
+# Klucz jest publiczny z założenia (ten sam co w grze) – pozwala tylko czytać i dodawać wyniki.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '37 5 * * *'   # codziennie ok. 6:37 / 7:37 czasu polskiego
+  workflow_dispatch:        # ręczne uruchomienie z zakładki Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Zapytanie do bazy wyników
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            'https://gbbefqrxrmdigsgvkpcn.supabase.co/rest/v1/results?select=id&limit=1' \
+            -H 'apikey: sb_publishable_IiyBVOCG06Z-lJ4kf6cVuA_cKZSyyn9')
+          echo "Odpowiedź bazy: HTTP $code"
+          test "$code" = "200"
